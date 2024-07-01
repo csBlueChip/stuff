@@ -1,0 +1,127 @@
+#!/bin/bash
+
+#+=============================================================================
+# define a global variable called SILENT
+#   1 = disabout stdout
+#   0 = enable   stdout
+#
+SILENT=0
+
+Silent() {
+	local  on=$1
+
+	((on == SILENT)) && return 0 || true
+
+	if ((on)) ; then
+		exec 4>&1
+		exec 1>/dev/null
+		SILENT=1
+
+	else
+		exec 1>&4
+		SILENT=0
+	fi
+}
+
+#+=============================================================================
+# Find a needle in a haystack
+# Outputs: -1, or >=0 the offset of the needle in the haystack
+#
+StrIdx() { # haystack, needle
+  local  x="${1%%"$2"*}"
+  [[ "$x" = "$1" ]] && echo -1 || echo "${#x}"
+}
+
+#+=============================================================================
+# Get the PID of the specified process
+#
+GetPID() {
+	declare -n  var=$1
+	local       rgx="$2"
+	local       start=0
+
+	local       uid  pid  tty  exe
+
+	local       pids=()
+
+	[[ "${rgx:0:1}" == "^" ]] && {
+		rgx="${rgx:1}"
+		start=1
+	}
+	readarray   pids < <(ps au | grep "${rgx}" | grep -v "grep\|$0")
+
+	((start)) && {
+		local  filt=()
+		for ((i=0;  i<${#pids[@]}; i++)); do
+			exe=`echo ${pids[$i]} | cut -d' ' -f11-`
+			[[ ${exe} =~ ^${rgx} ]] && filt+=("${pids[$i]}")
+		done
+		pids=("${filt[@]}")
+	}
+
+	for ((i=0;  i<${#pids[@]}; i++)); do
+		uid=`echo ${pids[$i]} | cut -d' ' -f1`
+		pid=`echo ${pids[$i]} | cut -d' ' -f2`
+		tty=`echo ${pids[$i]} | cut -d' ' -f7`
+		exe=`echo ${pids[$i]} | cut -d' ' -f11-`
+		pids[$i]="${pid} (${uid}@${tty}) ${exe}"
+	done
+
+	case ${#pids[@]} in 
+		0 )	return 1 ;;
+		1 )	var=${pids[0]} ;;
+		* )	echo "# Multiple matching processes found: \"${exe}\""
+			PS3="Choose a PID: "
+			select var in "${pids[@]}" ; do [[ -n $var ]] && break ; done ;;
+	esac
+
+	var=`cut -d' ' -f1 <<<${var}`
+	return 0
+}
+
+#+=============================================================================
+# Acquire sudo privs
+#
+GetSudo() {
+	local  reply
+
+	while true ; do
+		reply=`sudo -nv 2>&1`
+		if [[ $? == 0 ]] ; then
+			echo "# sudo active"
+			return 0
+		elif echo ${reply} | grep -q '^sudo:' ; then
+			((SILENT)) && reply=">&4" || reply=""
+			echo "# sudo requires password"  #${reply}
+			(($1)) && echo "# Check sudo usage with: $0 -@"  #${reply}
+			sudo true || return 53
+		else
+			echo "! sudo not available to ${LOGNAME}"  #${reply}
+			return 54
+		fi
+	done
+}
+
+#+=========================================================
+# Drop sudo privs (force timeout on sudo elevation)
+#
+DropSudo() {
+	sudo -k
+}
+
+#+=============================================================================
+OLDSTTY=
+
+SaveTTY() {
+	echo "# Backup stty settings"
+	OLDSTTY=`sudo stty -g -F $1`
+}
+
+#+=========================================================
+RestoreTTY() {
+	[[ -n ${OLDSTTY} ]] && {
+		echo "# Restore stty settings"
+		sudo stty ${OLDSTTY} -F $1
+	}
+}
+
