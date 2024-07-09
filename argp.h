@@ -23,20 +23,28 @@
 //-----------------------------------------------------------------------------
 // Program name & version
 //
+// 1.1.0  Increase size of PID integer to 22 bits (yes, twenty two)
+// 1.0.2  Add formatting to --help
+// 1.0.1  Add `make install`
+//
 #define TOOLNAME  "stuff"
 #define VER_MAJ   "1"
-#define VER_MIN   "0"
+#define VER_MIN   "1"
 #define VER_SUB   "0"
 #define VER_SVN   "0"
+
 
 //-----------------------------------------------------------------------------
 // CLI switches
 //
+
+typedef  uint32_t  uint22_t ;
+
 typedef
 	struct cli {
 		char*     pre;     // tokenised contents of the CLI prefixor
 
-		uint16_t  pid;     // --pid -p
+		uint22_t  pid;     // --pid -p
 		char*     tty;     // --tty -t
 
 		char*     app;     // --append -a
