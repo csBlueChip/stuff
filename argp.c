@@ -21,9 +21,19 @@ char doc[] =
 		" will be added to the START of the command line arguments "
 		"...Use -~ as the FIRST argument to disable this feature."
 	"\v"
-;//	"Some suffixing info";
+	"The following string formats are valid representations of a "
+	"value/character in the range {0 .. 255}\n"
+	"\tASCII Character    {' ' .. '~'}    / (0x20 .. 0x7E} (except 0x5C)\n"
+	"\t\\\\                 Backslash       / {0x5C}\n"
+	"\t\\^<key>            {^@  .. ^_, ^?} / {0x00 .. 0x1F, 0x7F}\n\n"
+	"\t\\d255              Three digit decimal number (000  .. 255 }\n"
+	"\t\\xFF               Two digit hex number       {0x00 .. 0xFF}\n"
+	"\t\\377               Three digit octal number   {000  .. 377 }\n"
 
-static char args_doc[] = "\"char string\"";
+
+;
+
+static char args_doc[] = "\"string\"  \"string\" ...";
 
 // http://www.gnu.org/software/libc/manual/html_node/Argp-Option-Vectors.html
 // If you can come up with a way to make this readable, you've solved a problem I couldn't!
