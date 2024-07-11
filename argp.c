@@ -23,12 +23,14 @@ char doc[] =
 	"\v"
 	"The following string formats are valid representations of a "
 	"value/character in the range {0 .. 255}\n"
-	"\tASCII Character    {' ' .. '~'}    / (0x20 .. 0x7E} (except 0x5C)\n"
-	"\t\\\\                 Backslash       / {0x5C}\n"
-	"\t\\^<key>            {^@  .. ^_, ^?} / {0x00 .. 0x1F, 0x7F}\n\n"
-	"\t\\d255              Three digit decimal number (000  .. 255 }\n"
-	"\t\\xFF               Two digit hex number       {0x00 .. 0xFF}\n"
-	"\t\\377               Three digit octal number   {000  .. 377 }\n"
+	"\tASCII Character   {' ' .. '~'}    / (0x20 .. 0x7E} (except 0x5C)\n"
+	"\t\\\\                Backslash       / {0x5C}\n"
+	"\t\\^<key>           {^@  .. ^_, ^?} / {0x00 .. 0x1F, 0x7F}\n"
+	"\t\\d255             Three digit decimal number (000  .. 255 }\n"
+	"\t\\xFF              Two digit hex number       {0x00 .. 0xFF}\n"
+	"\t\\377              Three digit octal number   {000  .. 377 }\n"
+	"\tC Escape Codes    \\r => 0x0D   \\t => 0x09   \\e => 0x1B  \\f => 0x0C\n"
+	"\t                  \\n => 0x0A   \\b => 0x08   \\a => 0x07  \\v => 0x0B\n"
 
 
 ;

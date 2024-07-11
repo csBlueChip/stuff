@@ -57,10 +57,15 @@ int  xlat (char* id,  char* s,  int* len,  int ban)
 			pos = cp-s+1;
 			if (*cp == '\\') {
 				switch (tolower(cp[1])) {
-					case '\\' :  // \\ ;
-						val = '\\';
-						cp += 1;
-						break;
+					case '\\' :  val = '\\';  cp += 1;  break ;  // backslash
+					case 'a'  :  val = '\a';  cp += 1;  break ;  // 0x07 - BEL - alarm
+					case 'b'  :  val = '\b';  cp += 1;  break ;  // 0x08 - BS  - backspace
+					case 't'  :  val = '\t';  cp += 1;  break ;  // 0x09 - TAB - <tab>
+					case 'n'  :  val = '\n';  cp += 1;  break ;  // 0x0A - LF  - Line Feed
+					case 'v'  :  val = '\v';  cp += 1;  break ;  // 0x0B - VT  - Vertical Tab
+					case 'f'  :  val = '\f';  cp += 1;  break ;  // 0x0C - FF  - Form Feed
+					case 'r'  :  val = '\r';  cp += 1;  break ;  // 0x0D - CR  - Carriage Return
+					case 'e'  :  val = '\e';  cp += 1;  break ;  // 0x1B - ESC - Escape
 
 					case '^'  :  // ^?
 						char ch = toupper(cp[2]);
