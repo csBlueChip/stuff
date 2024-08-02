@@ -13,25 +13,28 @@
 //+============================================================================ ========================================
 err_t  pid2tty (void)
 {
-	struct stat  sb;
-	char         fn[32];
+	struct stat  sb;        // stat block
+	char         fn[32];    // Filename eg. "/proc/<pid>/..."
 
-	static char  link[32];
-	int          len;
+	static char  link[32];  // readlink result
+	int          len;       // length of link
 
+	// Find /proc/<pid>
 	snprintf(fn, sizeof(fn), "/proc/%d",  cli.pid);
 	if ( (stat(fn, &sb) != 0) || (S_ISDIR(sb.st_mode) == 0) ) {
 		ERROR("! PID not found: %d\n", cli.pid);
 		return ERR_;
 	}
 
+	// Find tty attached to stdin
 	snprintf(fn, sizeof(fn), "/proc/%d/fd/0",  cli.pid);
 	if ((len = readlink(fn, link, sizeof(link)-1)) == -1) {
 		ERROR("! Cannot locate stdin for PID: %d\n", cli.pid);
 		return ERR_;
 	}
-	link[len] = '\0';
+	link[len] = '\0';  // sanity
 
+	// Put tty name in cli.tty
 	cli.tty = link;
 	INFO("# PID %d, TTY is: |%s|\n", cli.pid, cli.tty);
 
@@ -136,9 +139,11 @@ banned:
 }
 
 //+============================================================================ ========================================
+// Check if value is in the Banned list
+//
 int  isban (char ch)
 {
-	if (!cli.banLen)  return 0 ;
+	if (!cli.banLen)  return 0 ;  // no banned list
 
 	char*  cp = cli.ban;
 
@@ -169,9 +174,10 @@ int  main (int argc,  char* argv[],  char* envp[])
 	// PID -> TTY
 	if (!cli.tty && ((err = pid2tty()) != ERR_OK))  return (int)err ;
 
+	// Open TTY
 	if ( (err = tty_open(cli.tty)) != ERR_OK)  return err ;
 
-	// RAT mode will sniff out the key bindings are prefix them with LNEXT
+	// RAT mode will sniff out the TTY key bindings are prefix them with LNEXT
 	if (cli.rat > RAT_OFF) {
 		if ( (err = tty_getSig()     ) != ERR_OK)  return err ;
 		if ( (err = tty_setLnext()   ) != ERR_OK)  return err ;

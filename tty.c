@@ -13,11 +13,21 @@
 #include "error.h"
 #include "argp.h"
 
+//----------------------------------------------------------------------------- ----------------------------------------
+// A "literal" is a character code which is intercepted by the TTY and interpreted as a signal. 
+// Any "literal" may be prefixed with "Literal Next" (LNext) signal to signal that 
+//   the following byte should NOT be interpreted as a signal, but as a literal value
+//
+#ifdef CTRL
+#	undef   CTRL
+#	define  CTRL(x)  ( (x - 0x40) & 0x7F )
+#endif
+
 typedef
 	struct sig {
-		char*  name;
-		int    idx;
-		char   dflt;
+		char*  name;  // signal name
+		int    idx;   // signal index
+		char   dflt;  // current value
 	}
 sig_t;
 
@@ -44,20 +54,17 @@ sig_t  sig[] = {
 	{ NULL,0,0 }
 };
 
-static  char  literal[256] = {0};
-static  int   litCnt       = 0;
-static  char  lnext        = 0;
+static  char            literal[256]   = {0};  // Allow for 256 literals
+static  int             litCnt         = 0;    // How many are there
+static  char            lnext          = 0;    // Value of LNext
 
-static  int             ttyfd = 0;
-static  struct termios  orig  = {0};
-static  struct termios  attr  = {0};
-
-#ifdef CTRL
-#	undef   CTRL
-#	define  CTRL(x)  ( (x - 0x40) & 0x7F )
-#endif
+static  int             ttyfd          = 0;    // TTY File Descriptor
+static  struct termios  orig           = {0};  // Original settings
+static  struct termios  attr           = {0};  // Current settings
 
 //+============================================================================ ========================================
+// Find human name of ctrl value
+//
 char*  ctrls (char c,  char* r)
 {
 	static char  s[3] = {0};
@@ -75,6 +82,7 @@ char*  ctrls (char c,  char* r)
 
 //+============================================================================ ========================================
 // Open TTY
+//
 err_t  tty_open (char* tty)
 {
 	if ((ttyfd = open(tty, O_RDWR)) == -1) {
@@ -93,6 +101,7 @@ err_t  tty_open (char* tty)
 
 //+============================================================================ ========================================
 // Collate all the values bound to signals
+//
 err_t  tty_getSig (void)
 {
 	EXTRA("# Original STTY signal bindings:\n");
@@ -113,6 +122,7 @@ err_t  tty_getSig (void)
 
 //+============================================================================ ========================================
 // Set Terminal speed
+//
 err_t  tty_setSpeed (void)
 {
 	cfsetospeed(&attr, B115200); // Set output speed
@@ -123,7 +133,8 @@ err_t  tty_setSpeed (void)
 }
 
 //+============================================================================ ========================================
-// Set Canonicasl mode
+// Set Canonical mode
+//
 err_t  tty_setCanon (void)
 {
 	attr.c_lflag &= ~(ECHO | ECHONL | ISIG | ICANON | IEXTEN);
@@ -135,9 +146,12 @@ err_t  tty_setCanon (void)
 }
 
 //+============================================================================ ========================================
-// Show all the value that will be prefixed as literals
+// Show all the values that will be prefixed as literals
+//
 err_t  tty_showLit (void)
 {
+	if (cli.noise < nEXTRA)  return ERR_OK ;
+
 	EXTRA("# %d literal values:", litCnt);
 
 	for (char* cp = literal;  *cp;  cp++) {
@@ -151,6 +165,8 @@ err_t  tty_showLit (void)
 
 //+============================================================================ ========================================
 // LNEXT - Literal Next - this is our prefix code
+// If one is not allocated (eg. ^V), then allocate one
+//
 err_t  tty_setLnext (void)
 {
 	lnext = orig.c_cc[VLNEXT];
@@ -171,6 +187,7 @@ err_t  tty_setLnext (void)
 
 //+============================================================================ ========================================
 // Restore original terminal settings
+//
 err_t  tty_close (void)
 {
 	// Restore original terminal settings
@@ -181,7 +198,9 @@ err_t  tty_close (void)
 	return ERR_OK;
 }
 
-//+============================================================================
+//+============================================================================ ========================================
+// Does the specified character require an LNext prefix?
+//
 static
 int  isliteral (char ch)
 {
@@ -195,16 +214,18 @@ int  isliteral (char ch)
 	return 0;
 }
 
-//+============================================================================ ========================================
+//+============================================================================
 // Send the character
+//
 static
 err_t  tty_stuffc (char* s)
 {
 	if (ioctl(ttyfd, TIOCSTI, s) == -1) {
-		FERROR(ERR_, "Cannot write to TTY ...Try `sudo stuff`\n");
-		//perror("! ?need sudo? ");
+		FERROR(ERR_, "Cannot write to TTY ...Try `sudo stuff`\n");  // Fatal error - bail
 		//return ERR_;
 	}
+
+	// Pause 0.0001 seconds to allow keystroke to propogate
 	usleep(100);
 	return ERR_OK;
 }

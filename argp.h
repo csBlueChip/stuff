@@ -23,6 +23,7 @@
 //-----------------------------------------------------------------------------
 // Program name & version
 //
+// 1.2.1  Improve commenting
 // 1.2.0  Add C Escape Codes
 // 1.1.0  Increase size of PID integer to 22 bits (yes, twenty two)
 // 1.0.2  Add formatting to --help
@@ -31,7 +32,7 @@
 #define TOOLNAME  "stuff"
 #define VER_MAJ   "1"
 #define VER_MIN   "2"
-#define VER_SUB   "0"
+#define VER_SUB   "1"
 #define VER_SVN   "0"
 
 
