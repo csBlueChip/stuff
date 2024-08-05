@@ -5,12 +5,15 @@
 #include  <sys/stat.h>  // stat
 #include  <unistd.h>    // readlink
 #include  <ctype.h>     // toupper
+#include  <unistd.h>    // getpid
 
 #include  "argp.h"
 #include  "error.h"
 #include  "tty.h"
+#include  "humanise.h"
 
 //+============================================================================ ========================================
+static
 err_t  pid2tty (void)
 {
 	struct stat  sb;        // stat block
@@ -19,17 +22,26 @@ err_t  pid2tty (void)
 	static char  link[32];  // readlink result
 	int          len;       // length of link
 
+	// no tty, no pid, but we are humanising (not stuffing)
+	if ((cli.pid == 0) && cli.human) {
+		// if we are humanising, and requested RAT (LNext) consideration, use local tty settings
+		if (cli.rat > RAT_OFF)
+			WARN("! Using local terminal signal settings!  pid=%d\n", (cli.pid = getpid()));
+		else
+			return ERR_OK;
+	}
+
 	// Find /proc/<pid>
 	snprintf(fn, sizeof(fn), "/proc/%d",  cli.pid);
 	if ( (stat(fn, &sb) != 0) || (S_ISDIR(sb.st_mode) == 0) ) {
-		ERROR("! PID not found: %d\n", cli.pid);
+		ERROR("PID not found: %d\n", cli.pid);
 		return ERR_;
 	}
 
 	// Find tty attached to stdin
 	snprintf(fn, sizeof(fn), "/proc/%d/fd/0",  cli.pid);
 	if ((len = readlink(fn, link, sizeof(link)-1)) == -1) {
-		ERROR("! Cannot locate stdin for PID: %d\n", cli.pid);
+		ERROR("Cannot locate stdin for PID: %d\n", cli.pid);
 		return ERR_;
 	}
 	link[len] = '\0';  // sanity
@@ -42,9 +54,25 @@ err_t  pid2tty (void)
 }
 
 //+============================================================================ ========================================
+// Check if value is in the Banned list
+//
+int  isban (char ch)
+{
+	if (!cli.banLen)  return 0 ;  // no banned list
+
+	char*  cp = cli.ban;
+
+	for (int i = 0;  i < cli.banLen;  i++, cp++)
+		if (*cp == ch)  return 1 ;
+
+	return 0;
+}
+
+//+============================================================================ ========================================
 #define isodigit(c) ((c >= '0') && (c <= '7'))
 #define isbdigit(c) ((c >= '0') && (c <= '1'))
 
+static
 int  xlat (char* id,  char* s,  int* len,  int ban)
 {
 	char*  cp  = NULL;
@@ -103,7 +131,7 @@ int  xlat (char* id,  char* s,  int* len,  int ban)
 
 			} else  val = *cp ;
 
-			if (ban && isban(val))  goto banned ;
+			if (!cli.human && ban && isban(val))  goto banned ;
 
 			if (pass == 2) {
 				s[*len] = val & 0xFF;
@@ -139,66 +167,32 @@ banned:
 }
 
 //+============================================================================ ========================================
-// Check if value is in the Banned list
-//
-int  isban (char ch)
-{
-	if (!cli.banLen)  return 0 ;  // no banned list
-
-	char*  cp = cli.ban;
-
-	for (int i = 0;  i < cli.banLen;  i++, cp++)
-		if (*cp == ch)  return 1 ;
-
-	return 0;
-}
-
-//+============================================================================ ========================================
 int*  posLen = NULL;
 
+static
 void  cleanup (void)
 {
 	FREE(posLen);
+	tty_close();
 }
 
-//++=========================================================================== ========================================
-int  main (int argc,  char* argv[],  char* envp[])
+//+============================================================================ ========================================
+// Parse all character strings to hex
+//
+static
+err_t  hexify (void)
 {
 	err_t  err;
 
-	parseCLI(argc, argv, envp);
-
-	WARN("# %s", TOOLNAME " v" VER_MAJ "." VER_MIN "." VER_SUB "(" VER_SVN ")");
-	WARN(" ... (C) copyright csBlueChip, 2024\n");
-
-	// PID -> TTY
-	if (!cli.tty && ((err = pid2tty()) != ERR_OK))  return (int)err ;
-
-	// Open TTY
-	if ( (err = tty_open(cli.tty)) != ERR_OK)  return err ;
-
-	// RAT mode will sniff out the TTY key bindings are prefix them with LNEXT
-	if (cli.rat > RAT_OFF) {
-		if ( (err = tty_getSig()     ) != ERR_OK)  return err ;
-		if ( (err = tty_setLnext()   ) != ERR_OK)  return err ;
-		if (cli.noise >= nEXTRA)  
-			if ( (err = tty_showLit()    ) != ERR_OK)  return err ;
-	} else {
-		EXTRA("# RAT mode DISabled\n");
-	}
-
-//	if ( (err = tty_setSpeed()   ) != ERR_OK)  return err ;
-//	if ( (err = tty_setCanon()   ) != ERR_OK)  return err ;
-
-	// Parse all character strings to hex
 	if ( (err = xlat("Append", cli.app, &cli.appLen, 0)) != ERR_OK)  return err ;
+
 	if ( (err = xlat("Ban   ", cli.ban, &cli.banLen, 0)) != ERR_OK)  return err ;
 
+	// Some memory in which to store an array of all the string [Positional Arugment] lengths
 	if ( !(posLen = calloc(cli.posCnt, sizeof(int))) )  {
 		ERROR("! malloc() fail\n");
 		return ERR_;
 	}
-	atexit(cleanup);
 
 	for (int i = 0;  i < cli.posCnt;  i++) {
 		char  id[24];
@@ -206,13 +200,81 @@ int  main (int argc,  char* argv[],  char* envp[])
 		if ( (err = xlat(id, cli.pos[i], &posLen[i], 1)) != ERR_OK)  return err ;
 	}
 
+	return ERR_OK;
+}
+
+//++=========================================================================== ========================================
+int  main (int argc,  char* argv[],  char* envp[])
+{
+	err_t  err;
+
+	atexit(cleanup);
+
+	parseCLI(argc, argv, envp);
+
+	WARN("# %s", TOOLNAME " v" VER_MAJ "." VER_MIN "." VER_SUB "(" VER_SVN ")");
+	WARN(" ... (C) copyright csBlueChip, 2024\n");
+
+	// PID -> TTY
+	if (!cli.tty && ((err = pid2tty()) != ERR_OK))  return err ;
+
+	// If we are humansing and *not* RAT'ing, we can skip this bit
+	if (cli.tty) {	
+		// Open TTY
+		if ( (err = tty_open(cli.tty)) != ERR_OK)  return err ;
+
+		// RAT mode will sniff out the TTY key bindings are prefix them with LNEXT
+		if (cli.rat > RAT_OFF) {
+			if ( (err = tty_getSig()     ) != ERR_OK)  return err ;
+		if ( (err = tty_setLnext()   ) != ERR_OK)  return err ;
+			if ( (err = tty_showLit()    ) != ERR_OK)  return err ;
+		} else {
+			EXTRA("# RAT mode DISabled\n");
+		}
+
+//		if ( (err = tty_setSpeed()   ) != ERR_OK)  return err ;
+//		if ( (err = tty_setCanon()   ) != ERR_OK)  return err ;
+	}
+
+	// Parse all character strings to hex
+	if ( (err = hexify()) != ERR_OK)  return err ;
+
 	// Send the strings
 	for (int i = 0;  i < cli.posCnt;  i++) {
-		if ( (err = tty_stuff(cli.pos[i], posLen[i], cli.rat)) != ERR_OK)  return err ;
-		if (cli.app)
-			if ( (err = tty_stuff(cli.app, cli.appLen, -2)) != ERR_OK)  return err ;
-		usleep(cli.delay *1000);
+		if (cli.human) {
+			WARN("string[%d] : ", i);
+			if ( (err = humanise(cli.pos[i], posLen[i])) != ERR_OK)  return err ;
+			printf("\n");
+		} else { // Stuff it!
+			if ( (err = tty_stuff(cli.pos[i], posLen[i], cli.rat)) != ERR_OK)  return err ;
+			if (cli.app)
+				if ( (err = tty_stuff(cli.app, cli.appLen, -2)) != ERR_OK)  return err ;
+			usleep(cli.delay *1000);
+		}
 	}
 
 	return ERR_OK;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

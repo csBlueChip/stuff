@@ -1,6 +1,10 @@
-#include <stdio.h>
-#include <stdarg.h>
+#ifndef  _ERROR_H_
+#define  _ERROR_H_
 
+#include  <stdio.h>
+#include  <stdarg.h>
+
+// List of error codes
 typedef
 	enum err {
 		ERR_OK     = 0,
@@ -9,6 +13,7 @@ typedef
 	}
 err_t;
 
+// output noise level
 typedef
 	enum noise {
 		nERROR = 1,
@@ -27,3 +32,5 @@ void  msg (int level,  int kill,  FILE* fh,  const char* fmt,  ...) ;
 #define INFO(fmt,...)         msg(nINFO,  -1,  stdout, fmt, ##__VA_ARGS__)
 #define EXTRA(fmt,...)        msg(nEXTRA, -1,  stdout, fmt, ##__VA_ARGS__)
 #define DEBUG(fmt,...)        msg(nDEBUG, -1,  stdout, fmt, ##__VA_ARGS__)
+
+#endif //_ERROR_H_

@@ -1,8 +1,13 @@
+#ifndef  _ARGP_H_
+#define  _ARGP_H_
+
 #include  <stdbool.h>
 #include  <stdint.h>
 
+#include  "ver.h"
+
 //-----------------------------------------------------------------------------
-#define  ARGP_DEBUG  0  // 1 = enable
+#define  ARGP_DEBUG   0  // 1 = enable
 
 //-----------------------------------------------------------------------------
 #define  CLI_NEGATION 1  // 1 = enable
@@ -21,22 +26,6 @@
 #define BUGSTO "<csbluechip@gmail.com>"
 
 //-----------------------------------------------------------------------------
-// Program name & version
-//
-// 1.2.1  Improve commenting
-// 1.2.0  Add C Escape Codes
-// 1.1.0  Increase size of PID integer to 22 bits (yes, twenty two)
-// 1.0.2  Add formatting to --help
-// 1.0.1  Add `make install`
-//
-#define TOOLNAME  "stuff"
-#define VER_MAJ   "1"
-#define VER_MIN   "2"
-#define VER_SUB   "1"
-#define VER_SVN   "0"
-
-
-//-----------------------------------------------------------------------------
 // CLI switches
 //
 
@@ -48,6 +37,9 @@ typedef
 
 		uint22_t  pid;     // --pid -p
 		char*     tty;     // --tty -t
+
+		int       human;   // --humanise -h
+		int       colour;  // --colour -c
 
 		char*     app;     // --append -a
 		int       appLen; 
@@ -73,3 +65,5 @@ enum rat {
 
 //-----------------------------------------------------------------------------
 int  parseCLI (int argc,  char** argv,  char** envv) ;
+
+#endif //_ARGP_H_

@@ -15,9 +15,36 @@
 
 //----------------------------------------------------------------------------- ----------------------------------------
 // A "literal" is a character code which is intercepted by the TTY and interpreted as a signal. 
-// Any "literal" may be prefixed with "Literal Next" (LNext) signal to signal that 
-//   the following byte should NOT be interpreted as a signal, but as a literal value
+// Any "literal" may be prefixed with "Literal Next" (LNext) signal, to signal that 
+//   the following byte should NOT be interpreted as a signal, but as a literal value.
 //
+// Eg. A TTY is (normally) configured so that ^C (ASCII value 3) is intercepted as a "Signal", rather than a "character"
+//     ^C is (normally) bound to the Signal called "intr" (which we all know and love)
+//     When the TTY see's ^C is runs the "intr" function
+//     If you want the ^C to pass-through the TTY and be seen by the keyboard-reading program as the byte value 3
+//     you need to send the "lnext" Signal (commonly ^V) BEFORE you send the ^C
+// --> ^C = run intr function ... ^V^C = put ASCII-3 in the keyboard buffer
+//
+// A (possibly simpler) way to think about it is that ^V disables Signal-checking for the next character
+//
+// Your program MAY replace any of the TTY's Signal functions
+// Eg. The 'C' name for the "intr" Signal is "SIGINT"
+/*
+	#include <signal.h>
+	void  mySignalHandler (int signal) 
+	{
+		if (signal == SIGINT) {
+			static cnt = 0;
+			printf("^C presses: %d\n", ++cnt);
+		}
+	}
+	int  main (void)
+	{
+		signal(SIGINT, mySignalHandler);
+		while (1) ;  // CPU useage: 100% :)
+	}
+*/
+
 #ifdef CTRL
 #	undef   CTRL
 #	define  CTRL(x)  ( (x - 0x40) & 0x7F )
@@ -58,7 +85,7 @@ static  char            literal[256]   = {0};  // Allow for 256 literals
 static  int             litCnt         = 0;    // How many are there
 static  char            lnext          = 0;    // Value of LNext
 
-static  int             ttyfd          = 0;    // TTY File Descriptor
+static  int             ttyfd          = -1;   // TTY File Descriptor
 static  struct termios  orig           = {0};  // Original settings
 static  struct termios  attr           = {0};  // Current settings
 
@@ -71,13 +98,13 @@ char*  ctrls (char c,  char* r)
 
 	c &= 0x7F;
 
-	if      ((c >0x20) && (c < 0x7F))  s[0] = c  , s[1] = ' ' ;
-	else if  (c == 0x00)               s[0] = ' ', s[1] = ' ' ;
-	else if  (c == 0x7F)               s[0] = '^', s[1] = '?' ;
-	else    /* 01..31 */               s[0] = '^', s[1] = c + 0x40 ;
+	if      ((c  > 0x20) && (c < 0x7F))  s[0] = c  , s[1] = ' ' ;
+	else if  (c == 0x00)                 s[0] = ' ', s[1] = ' ' ;
+	else if  (c == 0x7F)                 s[0] = '^', s[1] = '?' ;
+	else    /* 01..31 */                 s[0] = '^', s[1] = c + 0x40 ;
 
-	if (r)  return strcpy(r, s);  // NOT SAFE!
-	return s;                     // NOT RELIABLE!
+	if (r)  return strcpy(r, s);  //! NOT SAFE
+	return s;                     //! NOT PREDICTABLE
 }
 
 //+============================================================================ ========================================
@@ -175,8 +202,9 @@ err_t  tty_setLnext (void)
 	if (!lnext) {
 		char  c;
 		for (c = CTRL('V');  c && strchr(literal, c);  c--) ;
-		if (!c)  FERROR(ERR_, "! Cannot allocate LNEXT\n") ;
+		if (!c)  FERROR(ERR_, "! Cannot allocate LNEXT\n") ;  // FATAL
 
+		// Add it to the Literals list, and set it on the terminal
 		attr.c_cc[VLNEXT] = (literal[litCnt++] = (lnext = c));
 		tcsetattr(ttyfd, TCSANOW, &attr);
 		EXTRA("# LNEXT assigned to : 0x%02X = %s\n", lnext, ctrls(lnext, NULL));
@@ -190,6 +218,8 @@ err_t  tty_setLnext (void)
 //
 err_t  tty_close (void)
 {
+	if (ttyfd == -1)  return ERR_OK ;
+
 	// Restore original terminal settings
 	tcsetattr(ttyfd, TCSANOW, &orig);
 
@@ -201,7 +231,6 @@ err_t  tty_close (void)
 //+============================================================================ ========================================
 // Does the specified character require an LNext prefix?
 //
-static
 int  isliteral (char ch)
 {
 	if (!litCnt)  return 0 ;
@@ -221,7 +250,7 @@ static
 err_t  tty_stuffc (char* s)
 {
 	if (ioctl(ttyfd, TIOCSTI, s) == -1) {
-		FERROR(ERR_, "Cannot write to TTY ...Try `sudo stuff`\n");  // Fatal error - bail
+		FERROR(ERR_, "Cannot write to TTY ...Try `sudo stuff`\n");  // FATAL
 		//return ERR_;
 	}
 
@@ -236,8 +265,6 @@ err_t  tty_stuff (char* s,  int len,  int rat)
 	int   err;
 	char  ln  = (char)(rat & 0xFF);
 
-	(void)lnext;
-
 	for (int i = 0;  i < len;  i++) {
 		char  ch = s[i];
 
@@ -245,7 +272,7 @@ err_t  tty_stuff (char* s,  int len,  int rat)
 		if (rat >= 0) {
 			if ((err = tty_stuffc(&ln)) != ERR_OK)  return err ;
 
-		// RAT_LNEXT, uses LNEXT from the TTY
+		// RAT_LNEXT, uses LNEXT from the TTY .. and only uses LNext if required
 		} else if ((rat == RAT_LNEXT) && isliteral(ch)) {  
 			if ((err = tty_stuffc(&lnext)) != ERR_OK)  return err ;
 		}

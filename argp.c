@@ -11,12 +11,14 @@
 //
 cli_t  cli;
 
-const char*  argp_program_version = 
-	TOOLNAME " " VER_MAJ "." VER_MIN "." VER_SUB "(" VER_SVN ")";
+#define VERS  VER_MAJ "." VER_MIN "." VER_SUB
+
+const char*  argp_program_version = TOOLNAME " " VERS ;
 
 const char*  argp_program_bug_address = BUGSTO;
 
 char doc[] = 
+	"\nStuff version v" VERS " (c)2024, csBluechip, MIT License (free as in \"free\")\n"
 	"\nThe contents of the environment variable " ENV_VAR 
 		" will be added to the START of the command line arguments "
 		"...Use -~ as the FIRST argument to disable this feature."
@@ -29,8 +31,8 @@ char doc[] =
 	"\t\\d255             Three digit decimal number (000  .. 255 }\n"
 	"\t\\xFF              Two digit hex number       {0x00 .. 0xFF}\n"
 	"\t\\377              Three digit octal number   {000  .. 377 }\n"
-	"\tC Escape Codes    \\r => 0x0D   \\t => 0x09   \\e => 0x1B  \\f => 0x0C\n"
-	"\t                  \\n => 0x0A   \\b => 0x08   \\a => 0x07  \\v => 0x0B\n"
+	"\tC Escape Codes    \\r => 0x0D   \\t => 0x09   \\e => 0x1B   \\f => 0x0C\n"
+	"\t                  \\n => 0x0A   \\b => 0x08   \\a => 0x07   \\v => 0x0B\n"
 
 
 ;
@@ -42,28 +44,21 @@ static char args_doc[] = "\"string\"  \"string\" ...";
 static struct argp_option options[] = {
 
 	{NULL,      '\0', "",     OPTION_DOC, "Target process:", 1},
-	{"pid",      'p', "{0..65535}",    0, "PID of target program", 1},
-	{"tty",      't', "<tty device>",  0, "eg. /dev/tty0", 1},
+	{"pid",      'p', "{0..65535}",   0, "PID of target program", 1},
+	{"tty",      't', "<tty device>", 0, "eg. /dev/tty0", 1},
+	{"colour",   'c', NULL          , 0, "Colourise humanised output", 2},
+	{"color",    'c', 0,              OPTION_ALIAS|OPTION_HIDDEN, "", 2 },
+	{"humanise", 'h', "{8, 10*, 16, -16}",  OPTION_ARG_OPTIONAL, "Humanise input string(s) [Do NOT stuff]\nUse -16 for lower-case hex [Try: -qqh]", 2},
+	{"humanize", 'h', 0,              OPTION_ALIAS|OPTION_HIDDEN, "", 2 },
 //	{"  Section 1 footer", '\0', "", OPTION_DOC, "", 1},
 
-	{NULL,      '\0', "",     OPTION_DOC, "Common options:", 2},
-	{"append",   'a', "<char list>",   0, "Append terminator to each string", 2},
-	{"ban",      'b', "<char list>",   0, "Banned values", 2},
-	{"delay",    'd', "<delay mS>",    0, "Delay between strings", 2},
-	{"rat",      'r', "value",         OPTION_ARG_OPTIONAL, "RAT mode", 2},
+	{NULL,      '\0', "",     OPTION_DOC, "Common options:", 10},
+	{"append",   'a', "<char list>",   0, "Append terminator to each string", 10},
+	{"ban",      'b', "<char list>",   0, "Banned values", 10},
+	{"delay",    'd', "<delay mS>",    0, "Delay between strings", 10},
+	{"rat",      'r', "value",         OPTION_ARG_OPTIONAL, "RAT mode", 10},
 
-	// Leave a blank line by incrementing the section number
-	// isascii('\x81') == false - so no "short option" for 'doit' or 'secret'
-//	{"doit", '\x81', NULL, 0, "Do a thing (default: don't do it)", 2},
-//	{"secret", '\x80', NULL, OPTION_HIDDEN, "Secret hidden option", 2},
-
-//	{NULL,     '\0', "",  OPTION_DOC, "ANOTHER SECTION HEADER:", 3},
-//	{"format",  'f', "tPBpOiosdx", 0, "A lengthy description "
-//	                                  "{target,Pkts,Bytes,port,Opt,in,out,src,dest,xtra}\n"
-//	                                  "Note: Pkts, Bytes, and Opt use CAPS", 3},
-//	{NULL, 'F', NULL, OPTION_ALIAS, NULL, 3},
-
-	// Section #99, leaves gaps for future sections {4..98}
+	// Section #99, leaves gaps for future sections
 	{NULL,     '\0', "",  OPTION_DOC, "Output detail:", 99},
 	{NULL,     '~',  NULL, 0, "Exclude environment variable |"ENV_VAR"|\n"
 	                          "This MUST be the FIRST argument", 99},
@@ -104,6 +99,9 @@ error_t  cli_parse (int key,  char *arg,  struct argp_state *state)
 			pCli->tty    = NULL;
 			pCli->pid    = 0;
 
+			pCli->human  = 0;
+			pCli->colour = 0;
+
 			pCli->app    = NULL;
 			pCli->ban    = NULL;
 			pCli->delay  = 0;
@@ -132,6 +130,10 @@ error_t  cli_parse (int key,  char *arg,  struct argp_state *state)
 			argp_usage(state);   // This will exit()
 
 		case ARGP_KEY_END:  // All arguments have been parsed
+			switch (pCli->human) {
+				case 0:  case 8:  case 10:  case 16:  case -16:  break ;
+				default: FERROR(ERR_, "! --humanise : Unknown base : %d\n", pCli->human);
+			}
 			break;
 
 		case ARGP_KEY_SUCCESS:
@@ -175,6 +177,15 @@ error_t  cli_parse (int key,  char *arg,  struct argp_state *state)
 		case 'p':    // --pid -p
 			if (pCli->tty)  FERROR(ERR_, "--pid : TTY already specified\n") ;
 			pCli->pid = atoi(arg);
+			break;
+
+		case 'c':    // --colour --color -c
+			pCli->colour = 1;
+			break;
+
+		case 'h':    // --humanise --humanize -h
+			if (arg)  pCli->human = atoi(arg) ;
+			else      pCli->human = 10 ;
 			break;
 
 		case 'a':    // --append -a
