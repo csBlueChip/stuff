@@ -1,0 +1,99 @@
+#+=============================================================================
+Humanise()
+{
+	declare -n  cmp=$1
+	local       inp=$2
+	local       base=$3    # {8, 10, 16, -16}  (-16 is lowercase hex)
+
+	local  inpLen=${#inp}  # input length
+	local  i               # index
+	local  n               # value
+
+	local  fmt             # printf format string
+	case $base in
+		8)    fmt="%03o" ;;
+		10)   fmt="d%03d" ;;
+		16)   fmt="x%02X" ;;
+		-16)  fmt="x%02x" ;;
+		*)    echo "! Bad base: $base" && return 181 ;;
+	esac
+
+	cmp=""
+	i=0
+	br=0
+	pr=0
+	while ((i<inpLen)) ; do
+		n=
+		if [[ ${inp:$i:1} == "\\" ]] ; then
+			# \ escaped
+			case ${inp:$((i+1)):1} in
+				r|n|t|b|e|a|f|v|\\)  # C escape codes - don't compress
+					pr=1 ; ink=33 ; [[ $br == 0 ]] && br="0;1" || br=0
+					ch="${inp:$i:2}"
+					((i+=2))
+					;;
+				^)  # ^X - dont compress
+					pr=1 ; ink=33 ; [[ $br == 0 ]] && br="0;1" || br=0
+					ch="${inp:$i:3}"
+					((i+=3))
+					;;
+				[dD])  # \d255 - decimal
+					n=$((${inp:$((i+2)):3}))
+					((i+=5))
+					;;
+				[xX])  # \xFF - hex
+					n=$((0x${inp:$((i+2)):2}))
+					((i+=4))
+					;;
+				[0-7])  # \377 - octal
+					n=$((0${inp:$((i+2)):3}))
+					((i+=5))
+					;;
+				*)  # what?
+					echo "! Compress() : Error @ $i : ${inp:$i:5}"
+					return 178
+					;;
+			esac
+
+			if [[ -n $n ]] ; then 
+				# backslash
+				if   ((n == 0x5C)) ; then
+					pr=1 ; ink=33 ; [[ br == 0 ]] && br="0;1" || br=0
+					ch="\\\\"
+ 
+				# printable
+				elif (( (n >= 0x20) && (n <= 0x7E) )) ; then
+					((!pr)) || {
+						[[ $br == 0 ]] && br="0;1" || br=0 
+					}
+					pr=0 ; ink=33
+					printf -v ch "\x$(printf "%x" $n)"
+ 
+				# ^?			
+				elif ((n == 0x7F)) ; then
+					pr=1 ; ink=32 ; [[ $br == 0 ]] && br="0;1" || br=0
+					ch="\\^?"
+ 
+				# ^@..^_
+				elif (( (n >= 0) && (n <= 31) )) ; then
+					pr=1 ; ink=32 ; [[ $br == 0 ]] && br="0;1" || br=0
+					printf -v ch "\\^\x$(printf "%x" $((n+0x40)))"
+ 
+				# >=0x80 - use base-specific formatter
+				else
+					pr=1 ; ink=36 ; [[ $br == 0 ]] && br="0;1" || br=0
+					printf -v ch "%s${fmt}" "\\" $((n))
+				fi
+			fi
+
+		else
+			# not escaped
+			pr=0 ; ink=37
+			ch="${inp:$i:1}"
+			((++i))
+		fi
+		printf "\e[%s;%sm%s" ${br} ${ink} "${ch}"
+		printf -v cmp "%s%s" "${cmp}" "${ch}"
+	done
+}
+
